@@ -13,7 +13,6 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
 import net.minecraft.text.Text;
 
 import java.io.File;
@@ -37,10 +36,11 @@ public class Smart_attributeClient implements ClientModInitializer {
         public boolean enabled = false;
         public boolean hudEnabled = true;
         public boolean switchBack = true;
+        public boolean attackOnly = true; // NEU: Nur beim Schlagen
         public int attributeIndex = 2;
     }
 
-    private int preSwapSlot = -1; // Speichert den Slot VOR dem Swap
+    private int preSwapSlot = -1;
     private int tickDelay = -1;
 
     @Override
@@ -55,45 +55,42 @@ public class Smart_attributeClient implements ClientModInitializer {
             }));
         });
 
-        // HUD RENDERER (Unten Links)
+        // HUD RENDERER (Fix für Sichtbarkeit)
         HudRenderCallback.EVENT.register((context, tickDelta) -> {
             if (!config.enabled || !config.hudEnabled) return;
             MinecraftClient client = MinecraftClient.getInstance();
+            if (client.player == null) return;
+
             String status = "§6Smart Attribute: §aON §7(" + OPTIONS.get(config.attributeIndex) + ")";
             int y = context.getScaledWindowHeight() - 20;
-            context.drawTextWithShadow(client.textRenderer, Text.literal(status), 10, y, 0xFFFFFF);
+            // Zeichne Text mit vollem Alpha (0xFF...) und Schatten
+            context.drawTextWithShadow(client.textRenderer, Text.literal(status), 10, y, 0xFFFFFFFF);
         });
 
         ClientTickEvents.START_CLIENT_TICK.register(client -> {
             if (client.player == null || !config.enabled) return;
 
-            // Logik: Swap bei Angriff oder Spear Lunge
-            // Hinweis: Items.field_52011 ist oft der Mace/Spear in 1.21 Mappings,
-            // falls das nicht geht, nutze: activeItem.getItem().toString().contains("spear")
-            boolean isAttacking = client.options.attackKey.isPressed();
+            // Logik-Check: Soll es nur beim Schlagen triggern?
+            boolean shouldTrigger = !config.attackOnly || client.options.attackKey.isPressed();
 
-            if (isAttacking) {
+            if (shouldTrigger) {
                 String target = OPTIONS.get(config.attributeIndex);
                 int attrSlot = (target.equals("Empty Hand")) ? findEmptySlot(client) : findSlotByName(client, target);
 
-                // NUR swappen, wenn wir nicht schon auf dem Ziel-Slot sind
                 if (attrSlot != -1 && client.player.getInventory().getSelectedSlot() != attrSlot) {
-                    // WICHTIG: Wir merken uns den AKTUELLEN Slot des Spielers
                     preSwapSlot = client.player.getInventory().getSelectedSlot();
-
-                    // Wechsel zum Attribut
                     client.player.getInventory().setSelectedSlot(attrSlot);
 
                     if (config.switchBack) {
-                        tickDelay = 1; // 1 Tick warten, damit der Hit registriert wird
+                        tickDelay = 1;
                     }
                 }
             }
 
-            // Exakter Rückwechsel zum Ursprungsslot
+            // Rückwechsel Logik
             if (tickDelay == 0 && preSwapSlot != -1) {
                 client.player.getInventory().setSelectedSlot(preSwapSlot);
-                preSwapSlot = -1; // Zurücksetzen
+                preSwapSlot = -1;
                 tickDelay = -1;
             } else if (tickDelay > 0) {
                 tickDelay--;
@@ -128,42 +125,54 @@ public class Smart_attributeClient implements ClientModInitializer {
         }
     }
 
-    // --- GUI ---
+    // --- UPDATED GUI ---
     public static class MainConfigScreen extends Screen {
         public MainConfigScreen() { super(Text.literal("Smart Attribute Settings")); }
 
         @Override
         protected void init() {
             int x = this.width / 2 - 100;
+
+            // Mod Toggle
             this.addDrawableChild(ButtonWidget.builder(Text.literal("Mod: " + (config.enabled ? "§aON" : "§cOFF")), b -> {
                 config.enabled = !config.enabled;
                 b.setMessage(Text.literal("Mod: " + (config.enabled ? "§aON" : "§cOFF")));
                 saveConfig();
-            }).dimensions(x, 35, 200, 20).build());
+            }).dimensions(x, 30, 200, 20).build());
 
+            // Trigger Mode Toggle
+            this.addDrawableChild(ButtonWidget.builder(Text.literal("Trigger: " + (config.attackOnly ? "§eAttack Only" : "§bAlways")), b -> {
+                config.attackOnly = !config.attackOnly;
+                b.setMessage(Text.literal("Trigger: " + (config.attackOnly ? "§eAttack Only" : "§bAlways")));
+                saveConfig();
+            }).dimensions(x, 55, 200, 20).build());
+
+            // HUD Toggle
             this.addDrawableChild(ButtonWidget.builder(Text.literal("HUD Display: " + (config.hudEnabled ? "§aON" : "§cOFF")), b -> {
                 config.hudEnabled = !config.hudEnabled;
                 b.setMessage(Text.literal("HUD Display: " + (config.hudEnabled ? "§aON" : "§cOFF")));
                 saveConfig();
-            }).dimensions(x, 60, 200, 20).build());
+            }).dimensions(x, 80, 200, 20).build());
 
+            // Switch Back Toggle
             this.addDrawableChild(ButtonWidget.builder(Text.literal("Switch Back: " + (config.switchBack ? "§aON" : "§cOFF")), b -> {
                 config.switchBack = !config.switchBack;
                 b.setMessage(Text.literal("Switch Back: " + (config.switchBack ? "§aON" : "§cOFF")));
                 saveConfig();
-            }).dimensions(x, 85, 200, 20).build());
+            }).dimensions(x, 105, 200, 20).build());
 
+            // Item Selection
             this.addDrawableChild(ButtonWidget.builder(Text.literal("Attribute Item: §b" + OPTIONS.get(config.attributeIndex)), b -> {
                 this.client.setScreen(new SelectionScreen(this));
-            }).dimensions(x, 110, 200, 20).build());
+            }).dimensions(x, 130, 200, 20).build());
 
-            this.addDrawableChild(ButtonWidget.builder(Text.literal("Done"), b -> this.client.setScreen(null)).dimensions(x, 145, 200, 20).build());
+            this.addDrawableChild(ButtonWidget.builder(Text.literal("Done"), b -> this.client.setScreen(null)).dimensions(x, 160, 200, 20).build());
         }
 
         @Override
         public void render(DrawContext context, int mouseX, int mouseY, float delta) {
             this.renderInGameBackground(context);
-            context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 15, 0xFFFFFF);
+            context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 10, 0xFFFFFF);
             super.render(context, mouseX, mouseY, delta);
         }
     }
