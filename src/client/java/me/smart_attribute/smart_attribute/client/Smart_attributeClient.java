@@ -27,7 +27,7 @@ public class Smart_attributeClient implements ClientModInitializer {
     private static final File CONFIG_FILE = FabricLoader.getInstance().getConfigDir().resolve("smart_attribute.json").toFile();
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
-    public static final List<String> ATTRIBUTE_OPTIONS = Arrays.asList("Sword", "Axe", "Spear", "Trident", "Mace", "Empty Hand");
+    public static final List<String> ATTRIBUTE_OPTIONS = Arrays.asList("Sword", "Axe", "Spear", "Trident", "Mace", "Empty Hand", "Specific Slot");
     public static final List<String> TRIGGER_MODES = Arrays.asList(
             "All Items", "Current Item", "Weapons Only",
             "Only Sword", "Only Axe", "Only Spear", "Only Mace", "Only Trident"
@@ -36,8 +36,9 @@ public class Smart_attributeClient implements ClientModInitializer {
     public static class ConfigData {
         public boolean enabled = false;
         public boolean switchBack = true;
-        public int attributeIndex = 2;
-        public int triggerModeIndex = 2;
+        public int attributeIndex = 2; // Default: Spear
+        public int triggerModeIndex = 2; // Default: Weapons Only
+        public int targetSlot = 1; // 1-9
         public String customTriggerId = "minecraft:air";
     }
 
@@ -64,8 +65,7 @@ public class Smart_attributeClient implements ClientModInitializer {
 
             if (attackKeyPressed && !isLocked) {
                 if (isTriggerItem(client.player.getMainHandStack())) {
-                    String target = ATTRIBUTE_OPTIONS.get(config.attributeIndex);
-                    int attrSlot = (target.equals("Empty Hand")) ? findEmptySlot(client) : findSlotByName(client, target);
+                    int attrSlot = getTargetSlot(client);
 
                     if (attrSlot != -1 && client.player.getInventory().getSelectedSlot() != attrSlot) {
                         preSwapSlot = client.player.getInventory().getSelectedSlot();
@@ -86,6 +86,13 @@ public class Smart_attributeClient implements ClientModInitializer {
                 tickDelay--;
             }
         });
+    }
+
+    private int getTargetSlot(MinecraftClient client) {
+        String mode = ATTRIBUTE_OPTIONS.get(config.attributeIndex);
+        if (mode.equals("Specific Slot")) return config.targetSlot - 1; // -1 weil Slot 0-8 intern
+        if (mode.equals("Empty Hand")) return findEmptySlot(client);
+        return findSlotByName(client, mode);
     }
 
     private boolean isTriggerItem(ItemStack stack) {
@@ -134,41 +141,20 @@ public class Smart_attributeClient implements ClientModInitializer {
     // --- MAIN GUI ---
     public static class MainConfigScreen extends Screen {
         public MainConfigScreen() { super(Text.literal("Smart Attribute Settings")); }
-
         @Override
         protected void init() {
             int x = this.width / 2 - 100;
-            this.addDrawableChild(ButtonWidget.builder(Text.literal("Mod: " + (config.enabled ? "§aON" : "§cOFF")), b -> {
-                config.enabled = !config.enabled;
-                b.setMessage(Text.literal("Mod: " + (config.enabled ? "§aON" : "§cOFF")));
-                saveConfig();
-            }).dimensions(x, 35, 200, 20).build());
+            this.addDrawableChild(ButtonWidget.builder(Text.literal("Mod: " + (config.enabled ? "§aON" : "§cOFF")), b -> { config.enabled = !config.enabled; b.setMessage(Text.literal("Mod: " + (config.enabled ? "§aON" : "§cOFF"))); saveConfig(); }).dimensions(x, 35, 200, 20).build());
 
-            // Button für Trigger Sub-Menü
-            this.addDrawableChild(ButtonWidget.builder(Text.literal("Trigger on: §e" + TRIGGER_MODES.get(config.triggerModeIndex)), b -> {
-                this.client.setScreen(new TriggerSelectionScreen(this));
-            }).dimensions(x, 60, 200, 20).build());
+            String attrDisplay = ATTRIBUTE_OPTIONS.get(config.attributeIndex);
+            if (attrDisplay.equals("Specific Slot")) attrDisplay = "Slot: " + config.targetSlot;
 
-            this.addDrawableChild(ButtonWidget.builder(Text.literal("Switch Back: " + (config.switchBack ? "§aON" : "§cOFF")), b -> {
-                config.switchBack = !config.switchBack;
-                b.setMessage(Text.literal("Switch Back: " + (config.switchBack ? "§aON" : "§cOFF")));
-                saveConfig();
-            }).dimensions(x, 85, 200, 20).build());
-
-            // Button für Attribute Sub-Menü
-            this.addDrawableChild(ButtonWidget.builder(Text.literal("Attribute: §b" + ATTRIBUTE_OPTIONS.get(config.attributeIndex)), b -> {
-                this.client.setScreen(new AttributeSelectionScreen(this));
-            }).dimensions(x, 110, 200, 20).build());
-
+            this.addDrawableChild(ButtonWidget.builder(Text.literal("Trigger on: §e" + TRIGGER_MODES.get(config.triggerModeIndex)), b -> this.client.setScreen(new TriggerSelectionScreen(this))).dimensions(x, 60, 200, 20).build());
+            this.addDrawableChild(ButtonWidget.builder(Text.literal("Switch Back: " + (config.switchBack ? "§aON" : "§cOFF")), b -> { config.switchBack = !config.switchBack; b.setMessage(Text.literal("Switch Back: " + (config.switchBack ? "§aON" : "§cOFF"))); saveConfig(); }).dimensions(x, 85, 200, 20).build());
+            this.addDrawableChild(ButtonWidget.builder(Text.literal("Attribute: §b" + attrDisplay), b -> this.client.setScreen(new AttributeSelectionScreen(this))).dimensions(x, 110, 200, 20).build());
             this.addDrawableChild(ButtonWidget.builder(Text.literal("Done"), b -> this.client.setScreen(null)).dimensions(x, 145, 200, 20).build());
         }
-
-        @Override
-        public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-            this.renderInGameBackground(context);
-            context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 10, 0xFFFFFF);
-            super.render(context, mouseX, mouseY, delta);
-        }
+        @Override public void render(DrawContext context, int mouseX, int mouseY, float delta) { this.renderInGameBackground(context); context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 10, 0xFFFFFF); super.render(context, mouseX, mouseY, delta); }
     }
 
     // --- SUB MENU: ATTRIBUTE SELECTION ---
@@ -180,10 +166,20 @@ public class Smart_attributeClient implements ClientModInitializer {
             int sx = (this.width - ((cols * bw) + ((cols - 1) * sp))) / 2, sy = 60;
             for (int i = 0; i < ATTRIBUTE_OPTIONS.size(); i++) {
                 int index = i;
-                this.addDrawableChild(ButtonWidget.builder(Text.literal(ATTRIBUTE_OPTIONS.get(i)), b -> {
-                    config.attributeIndex = index;
+                String label = ATTRIBUTE_OPTIONS.get(i);
+                if (label.equals("Specific Slot")) label = "Slot: " + config.targetSlot;
+
+                this.addDrawableChild(ButtonWidget.builder(Text.literal(label), b -> {
+                    if (ATTRIBUTE_OPTIONS.get(index).equals("Specific Slot")) {
+                        // Slot durchschalten 1 -> 9 -> 1
+                        config.targetSlot = (config.targetSlot % 9) + 1;
+                        config.attributeIndex = index; // Direkt auswählen
+                        b.setMessage(Text.literal("Slot: " + config.targetSlot));
+                    } else {
+                        config.attributeIndex = index;
+                        client.setScreen(parent);
+                    }
                     saveConfig();
-                    client.setScreen(parent);
                 }).dimensions(sx + (i % cols) * (bw + sp), sy + (i / cols) * (bh + sp), bw, bh).build());
             }
         }
@@ -195,7 +191,7 @@ public class Smart_attributeClient implements ClientModInitializer {
         private final Screen parent;
         public TriggerSelectionScreen(Screen parent) { super(Text.literal("Select Trigger Mode")); this.parent = parent; }
         @Override protected void init() {
-            int bw = 100, bh = 20, sp = 4, cols = 2; // 2 Spalten für bessere Übersicht
+            int bw = 100, bh = 20, sp = 4, cols = 2;
             int sx = (this.width - ((cols * bw) + ((cols - 1) * sp))) / 2, sy = 60;
             for (int i = 0; i < TRIGGER_MODES.size(); i++) {
                 int index = i;
