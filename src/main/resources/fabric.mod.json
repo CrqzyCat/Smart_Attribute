@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "smart_attribute",
+  "version": "${version}",
+  "name": "Smart_Attribute",
+  "description": "",
+  "authors": [],
+  "contact": {},
+  "license": "All-Rights-Reserved",
+  "icon": "assets/smart_attribute/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "fabric-datagen": [
+      "me.smart_attribute.smart_attribute.client.Smart_attributeDataGenerator"
+    ],
+    "client": [
+      "me.smart_attribute.smart_attribute.client.Smart_attributeClient"
+    ],
+    "main": [
+      "me.smart_attribute.smart_attribute.Smart_attribute"
+    ]
+  },
+  "mixins": [
+    "smart_attribute.mixins.json",
+    {
+      "config": "smart_attribute.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric-api": "*",
+    "minecraft": "${minecraft_version}"
+  }
+}
