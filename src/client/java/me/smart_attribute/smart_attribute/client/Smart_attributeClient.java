@@ -36,12 +36,13 @@ public class Smart_attributeClient implements ClientModInitializer {
         public boolean enabled = false;
         public boolean hudEnabled = true;
         public boolean switchBack = true;
-        public boolean attackOnly = true; // NEU: Nur beim Schlagen
+        public boolean attackOnly = true;
         public int attributeIndex = 2;
     }
 
     private int preSwapSlot = -1;
     private int tickDelay = -1;
+    private boolean isLocked = false;
 
     @Override
     public void onInitializeClient() {
@@ -55,25 +56,27 @@ public class Smart_attributeClient implements ClientModInitializer {
             }));
         });
 
-        // HUD RENDERER (Fix für Sichtbarkeit)
+        // KORRIGIERTER HUD RENDERER (Ohne Matrix-Fehler)
         HudRenderCallback.EVENT.register((context, tickDelta) -> {
             if (!config.enabled || !config.hudEnabled) return;
             MinecraftClient client = MinecraftClient.getInstance();
             if (client.player == null) return;
 
             String status = "§6Smart Attribute: §aON §7(" + OPTIONS.get(config.attributeIndex) + ")";
-            int y = context.getScaledWindowHeight() - 20;
-            // Zeichne Text mit vollem Alpha (0xFF...) und Schatten
+
+            // Einfache Lösung ohne Scale-Fehler:
+            // Wir zeichnen den Text einfach etwas weiter unten und nutzen Standard-Größe,
+            // da Matrix-Manipulationen in 1.21 oft zu Inkompatibilitäten führen.
+            int y = context.getScaledWindowHeight() - 15;
             context.drawTextWithShadow(client.textRenderer, Text.literal(status), 10, y, 0xFFFFFFFF);
         });
 
         ClientTickEvents.START_CLIENT_TICK.register(client -> {
             if (client.player == null || !config.enabled) return;
 
-            // Logik-Check: Soll es nur beim Schlagen triggern?
-            boolean shouldTrigger = !config.attackOnly || client.options.attackKey.isPressed();
+            boolean attackKeyPressed = client.options.attackKey.isPressed();
 
-            if (shouldTrigger) {
+            if (attackKeyPressed && !isLocked) {
                 String target = OPTIONS.get(config.attributeIndex);
                 int attrSlot = (target.equals("Empty Hand")) ? findEmptySlot(client) : findSlotByName(client, target);
 
@@ -85,9 +88,13 @@ public class Smart_attributeClient implements ClientModInitializer {
                         tickDelay = 1;
                     }
                 }
+                isLocked = true;
             }
 
-            // Rückwechsel Logik
+            if (!attackKeyPressed) {
+                isLocked = false;
+            }
+
             if (tickDelay == 0 && preSwapSlot != -1) {
                 client.player.getInventory().setSelectedSlot(preSwapSlot);
                 preSwapSlot = -1;
@@ -125,72 +132,31 @@ public class Smart_attributeClient implements ClientModInitializer {
         }
     }
 
-    // --- UPDATED GUI ---
+    // --- GUI ---
     public static class MainConfigScreen extends Screen {
         public MainConfigScreen() { super(Text.literal("Smart Attribute Settings")); }
-
         @Override
         protected void init() {
             int x = this.width / 2 - 100;
-
-            // Mod Toggle
-            this.addDrawableChild(ButtonWidget.builder(Text.literal("Mod: " + (config.enabled ? "§aON" : "§cOFF")), b -> {
-                config.enabled = !config.enabled;
-                b.setMessage(Text.literal("Mod: " + (config.enabled ? "§aON" : "§cOFF")));
-                saveConfig();
-            }).dimensions(x, 30, 200, 20).build());
-
-            // Trigger Mode Toggle
-            this.addDrawableChild(ButtonWidget.builder(Text.literal("Trigger: " + (config.attackOnly ? "§eAttack Only" : "§bAlways")), b -> {
-                config.attackOnly = !config.attackOnly;
-                b.setMessage(Text.literal("Trigger: " + (config.attackOnly ? "§eAttack Only" : "§bAlways")));
-                saveConfig();
-            }).dimensions(x, 55, 200, 20).build());
-
-            // HUD Toggle
-            this.addDrawableChild(ButtonWidget.builder(Text.literal("HUD Display: " + (config.hudEnabled ? "§aON" : "§cOFF")), b -> {
-                config.hudEnabled = !config.hudEnabled;
-                b.setMessage(Text.literal("HUD Display: " + (config.hudEnabled ? "§aON" : "§cOFF")));
-                saveConfig();
-            }).dimensions(x, 80, 200, 20).build());
-
-            // Switch Back Toggle
-            this.addDrawableChild(ButtonWidget.builder(Text.literal("Switch Back: " + (config.switchBack ? "§aON" : "§cOFF")), b -> {
-                config.switchBack = !config.switchBack;
-                b.setMessage(Text.literal("Switch Back: " + (config.switchBack ? "§aON" : "§cOFF")));
-                saveConfig();
-            }).dimensions(x, 105, 200, 20).build());
-
-            // Item Selection
-            this.addDrawableChild(ButtonWidget.builder(Text.literal("Attribute Item: §b" + OPTIONS.get(config.attributeIndex)), b -> {
-                this.client.setScreen(new SelectionScreen(this));
-            }).dimensions(x, 130, 200, 20).build());
-
+            this.addDrawableChild(ButtonWidget.builder(Text.literal("Mod: " + (config.enabled ? "§aON" : "§cOFF")), b -> { config.enabled = !config.enabled; b.setMessage(Text.literal("Mod: " + (config.enabled ? "§aON" : "§cOFF"))); saveConfig(); }).dimensions(x, 30, 200, 20).build());
+            this.addDrawableChild(ButtonWidget.builder(Text.literal("Trigger: " + (config.attackOnly ? "§eAttack Only" : "§bAlways")), b -> { config.attackOnly = !config.attackOnly; b.setMessage(Text.literal("Trigger: " + (config.attackOnly ? "§eAttack Only" : "§bAlways"))); saveConfig(); }).dimensions(x, 55, 200, 20).build());
+            this.addDrawableChild(ButtonWidget.builder(Text.literal("HUD Display: " + (config.hudEnabled ? "§aON" : "§cOFF")), b -> { config.hudEnabled = !config.hudEnabled; b.setMessage(Text.literal("HUD Display: " + (config.hudEnabled ? "§aON" : "§cOFF"))); saveConfig(); }).dimensions(x, 80, 200, 20).build());
+            this.addDrawableChild(ButtonWidget.builder(Text.literal("Switch Back: " + (config.switchBack ? "§aON" : "§cOFF")), b -> { config.switchBack = !config.switchBack; b.setMessage(Text.literal("Switch Back: " + (config.switchBack ? "§aON" : "§cOFF"))); saveConfig(); }).dimensions(x, 105, 200, 20).build());
+            this.addDrawableChild(ButtonWidget.builder(Text.literal("Attribute Item: §b" + OPTIONS.get(config.attributeIndex)), b -> { this.client.setScreen(new SelectionScreen(this)); }).dimensions(x, 130, 200, 20).build());
             this.addDrawableChild(ButtonWidget.builder(Text.literal("Done"), b -> this.client.setScreen(null)).dimensions(x, 160, 200, 20).build());
         }
-
-        @Override
-        public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-            this.renderInGameBackground(context);
-            context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 10, 0xFFFFFF);
-            super.render(context, mouseX, mouseY, delta);
-        }
+        @Override public void render(DrawContext context, int mouseX, int mouseY, float delta) { this.renderInGameBackground(context); context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 10, 0xFFFFFF); super.render(context, mouseX, mouseY, delta); }
     }
 
     public static class SelectionScreen extends Screen {
         private final Screen parent;
         public SelectionScreen(Screen parent) { super(Text.literal("Select Attribute Item")); this.parent = parent; }
-        @Override
-        protected void init() {
+        @Override protected void init() {
             int bw = 100, bh = 20, sp = 4, cols = 3;
             int sx = (this.width - ((cols * bw) + ((cols - 1) * sp))) / 2, sy = 50;
             for (int i = 0; i < OPTIONS.size(); i++) {
                 int index = i;
-                this.addDrawableChild(ButtonWidget.builder(Text.literal(OPTIONS.get(i)), b -> {
-                    config.attributeIndex = index;
-                    saveConfig();
-                    client.setScreen(parent);
-                }).dimensions(sx + (i % cols) * (bw + sp), sy + (i / cols) * (bh + sp), bw, bh).build());
+                this.addDrawableChild(ButtonWidget.builder(Text.literal(OPTIONS.get(i)), b -> { config.attributeIndex = index; saveConfig(); client.setScreen(parent); }).dimensions(sx + (i % cols) * (bw + sp), sy + (i / cols) * (bh + sp), bw, bh).build());
             }
         }
         @Override public void render(DrawContext context, int mouseX, int mouseY, float delta) { this.renderInGameBackground(context); super.render(context, mouseX, mouseY, delta); }
