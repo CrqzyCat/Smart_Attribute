@@ -28,8 +28,6 @@ public class Smart_attributeClient implements ClientModInitializer {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     public static final List<String> ATTRIBUTE_OPTIONS = Arrays.asList("Sword", "Axe", "Spear", "Trident", "Mace", "Empty Hand");
-
-    // Erweiterte Trigger-Liste
     public static final List<String> TRIGGER_MODES = Arrays.asList(
             "All Items", "Current Item", "Weapons Only",
             "Only Sword", "Only Axe", "Only Spear", "Only Mace", "Only Trident"
@@ -39,7 +37,7 @@ public class Smart_attributeClient implements ClientModInitializer {
         public boolean enabled = false;
         public boolean switchBack = true;
         public int attributeIndex = 2;
-        public int triggerModeIndex = 2; // Default: Weapons Only
+        public int triggerModeIndex = 2;
         public String customTriggerId = "minecraft:air";
     }
 
@@ -93,9 +91,7 @@ public class Smart_attributeClient implements ClientModInitializer {
     private boolean isTriggerItem(ItemStack stack) {
         String mode = TRIGGER_MODES.get(config.triggerModeIndex);
         if (mode.equals("All Items")) return true;
-
         String name = stack.getItem().toString().toLowerCase();
-
         return switch (mode) {
             case "Current Item" -> name.equals(config.customTriggerId);
             case "Weapons Only" -> name.contains("sword") || name.contains("axe") || name.contains("mace") || name.contains("spear") || name.contains("trident");
@@ -135,41 +131,33 @@ public class Smart_attributeClient implements ClientModInitializer {
         }
     }
 
-    // --- GUI ---
+    // --- MAIN GUI ---
     public static class MainConfigScreen extends Screen {
         public MainConfigScreen() { super(Text.literal("Smart Attribute Settings")); }
 
         @Override
         protected void init() {
             int x = this.width / 2 - 100;
-
-            // Mod Status
             this.addDrawableChild(ButtonWidget.builder(Text.literal("Mod: " + (config.enabled ? "§aON" : "§cOFF")), b -> {
                 config.enabled = !config.enabled;
                 b.setMessage(Text.literal("Mod: " + (config.enabled ? "§aON" : "§cOFF")));
                 saveConfig();
             }).dimensions(x, 35, 200, 20).build());
 
-            // Trigger Mode
-            this.addDrawableChild(ButtonWidget.builder(Text.literal("Trigger on: " + TRIGGER_MODES.get(config.triggerModeIndex)), b -> {
-                config.triggerModeIndex = (config.triggerModeIndex + 1) % TRIGGER_MODES.size();
-                if (TRIGGER_MODES.get(config.triggerModeIndex).equals("Current Item")) {
-                    config.customTriggerId = client.player.getMainHandStack().getItem().toString().toLowerCase();
-                }
-                b.setMessage(Text.literal("Trigger on: " + TRIGGER_MODES.get(config.triggerModeIndex)));
-                saveConfig();
+            // Button für Trigger Sub-Menü
+            this.addDrawableChild(ButtonWidget.builder(Text.literal("Trigger on: §e" + TRIGGER_MODES.get(config.triggerModeIndex)), b -> {
+                this.client.setScreen(new TriggerSelectionScreen(this));
             }).dimensions(x, 60, 200, 20).build());
 
-            // Switch Back
             this.addDrawableChild(ButtonWidget.builder(Text.literal("Switch Back: " + (config.switchBack ? "§aON" : "§cOFF")), b -> {
                 config.switchBack = !config.switchBack;
                 b.setMessage(Text.literal("Switch Back: " + (config.switchBack ? "§aON" : "§cOFF")));
                 saveConfig();
             }).dimensions(x, 85, 200, 20).build());
 
-            // Attribute Choice
+            // Button für Attribute Sub-Menü
             this.addDrawableChild(ButtonWidget.builder(Text.literal("Attribute: §b" + ATTRIBUTE_OPTIONS.get(config.attributeIndex)), b -> {
-                this.client.setScreen(new SelectionScreen(this));
+                this.client.setScreen(new AttributeSelectionScreen(this));
             }).dimensions(x, 110, 200, 20).build());
 
             this.addDrawableChild(ButtonWidget.builder(Text.literal("Done"), b -> this.client.setScreen(null)).dimensions(x, 145, 200, 20).build());
@@ -183,16 +171,39 @@ public class Smart_attributeClient implements ClientModInitializer {
         }
     }
 
-    public static class SelectionScreen extends Screen {
+    // --- SUB MENU: ATTRIBUTE SELECTION ---
+    public static class AttributeSelectionScreen extends Screen {
         private final Screen parent;
-        public SelectionScreen(Screen parent) { super(Text.literal("Select Attribute")); this.parent = parent; }
+        public AttributeSelectionScreen(Screen parent) { super(Text.literal("Select Attribute")); this.parent = parent; }
         @Override protected void init() {
             int bw = 100, bh = 20, sp = 4, cols = 3;
-            int sx = (this.width - ((cols * bw) + ((cols - 1) * sp))) / 2, sy = 50;
+            int sx = (this.width - ((cols * bw) + ((cols - 1) * sp))) / 2, sy = 60;
             for (int i = 0; i < ATTRIBUTE_OPTIONS.size(); i++) {
                 int index = i;
                 this.addDrawableChild(ButtonWidget.builder(Text.literal(ATTRIBUTE_OPTIONS.get(i)), b -> {
                     config.attributeIndex = index;
+                    saveConfig();
+                    client.setScreen(parent);
+                }).dimensions(sx + (i % cols) * (bw + sp), sy + (i / cols) * (bh + sp), bw, bh).build());
+            }
+        }
+        @Override public void render(DrawContext context, int mouseX, int mouseY, float delta) { this.renderInGameBackground(context); super.render(context, mouseX, mouseY, delta); }
+    }
+
+    // --- SUB MENU: TRIGGER SELECTION ---
+    public static class TriggerSelectionScreen extends Screen {
+        private final Screen parent;
+        public TriggerSelectionScreen(Screen parent) { super(Text.literal("Select Trigger Mode")); this.parent = parent; }
+        @Override protected void init() {
+            int bw = 100, bh = 20, sp = 4, cols = 2; // 2 Spalten für bessere Übersicht
+            int sx = (this.width - ((cols * bw) + ((cols - 1) * sp))) / 2, sy = 60;
+            for (int i = 0; i < TRIGGER_MODES.size(); i++) {
+                int index = i;
+                this.addDrawableChild(ButtonWidget.builder(Text.literal(TRIGGER_MODES.get(i)), b -> {
+                    config.triggerModeIndex = index;
+                    if (TRIGGER_MODES.get(index).equals("Current Item")) {
+                        config.customTriggerId = client.player.getMainHandStack().getItem().toString().toLowerCase();
+                    }
                     saveConfig();
                     client.setScreen(parent);
                 }).dimensions(sx + (i % cols) * (bw + sp), sy + (i / cols) * (bh + sp), bw, bh).build());
