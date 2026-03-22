@@ -90,7 +90,7 @@ public class Smart_attributeClient implements ClientModInitializer {
 
     private int getTargetSlot(MinecraftClient client) {
         String mode = ATTRIBUTE_OPTIONS.get(config.attributeIndex);
-        if (mode.equals("Specific Slot")) return config.targetSlot - 1; // -1 weil Slot 0-8 intern
+        if (mode.equals("Specific Slot")) return config.targetSlot - 1; // -1 because slots are 0-8 internally
         if (mode.equals("Empty Hand")) return findEmptySlot(client);
         return findSlotByName(client, mode);
     }
@@ -171,9 +171,9 @@ public class Smart_attributeClient implements ClientModInitializer {
 
                 this.addDrawableChild(ButtonWidget.builder(Text.literal(label), b -> {
                     if (ATTRIBUTE_OPTIONS.get(index).equals("Specific Slot")) {
-                        // Slot durchschalten 1 -> 9 -> 1
+                        // Cycle through slots 1 -> 9 -> 1
                         config.targetSlot = (config.targetSlot % 9) + 1;
-                        config.attributeIndex = index; // Direkt auswählen
+                        config.attributeIndex = index; // Select directly
                         b.setMessage(Text.literal("Slot: " + config.targetSlot));
                     } else {
                         config.attributeIndex = index;
